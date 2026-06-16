@@ -1,11 +1,13 @@
 using System.Security.Cryptography;
-
+using Flowist.Shared.Events;
 using Flowist.AuthService.Data;
 using Flowist.AuthService.DTOs;
 using Flowist.AuthService.Entities;
 using Flowist.AuthService.Options;
 using Flowist.Shared.DTOs;
 using Flowist.Shared.Exceptions;
+
+using MassTransit;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -18,20 +20,25 @@ public sealed class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly JwtOptions _jwtOptions;
+    private const int MaxFailedLoginAttempts = 5;
+    private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+    private readonly IPublishEndpoint _publishEndpoint;
 
     public AuthService(
         AuthDbContext dbContext,
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
-        IOptions<JwtOptions> jwtOptions)
+        IOptions<JwtOptions> jwtOptions,
+        IPublishEndpoint publishEndpoint)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _jwtOptions = jwtOptions.Value;
+        _publishEndpoint = publishEndpoint;
     }
 
-    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? deviceInfo, CancellationToken cancellationToken = default)
+    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? deviceInfo, string? ipAddress, CancellationToken cancellationToken = default)
     {
         string normalizedEmail = NormalizeEmail(request.Email);
 
@@ -52,7 +59,7 @@ public sealed class AuthService : IAuthService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        RefreshToken refreshToken = CreateRefreshToken(user.Id, deviceInfo);
+        RefreshToken refreshToken = CreateRefreshToken(user.Id, deviceInfo, ipAddress);
 
         user.RefreshTokens.Add(refreshToken);
 
@@ -60,10 +67,19 @@ public sealed class AuthService : IAuthService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        UserRegisteredEvent userRegisteredEvent = new(
+            user.Id,
+            user.Email,
+            user.FullName,
+            user.CreatedAt,
+            Guid.NewGuid());
+
+        await _publishEndpoint.Publish(userRegisteredEvent, cancellationToken);
+
         return CreateAuthResponse(user, refreshToken);
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request, string? deviceInfo, CancellationToken cancellationToken = default)
+    public async Task<AuthResponse> LoginAsync(LoginRequest request, string? deviceInfo, string? ipAddress, CancellationToken cancellationToken = default)
     {
         string normalizedEmail = NormalizeEmail(request.Email);
 
@@ -72,11 +88,31 @@ public sealed class AuthService : IAuthService
             .FirstOrDefaultAsync(user => user.Email == normalizedEmail, cancellationToken)
             ?? throw new NotFoundException(nameof(user), normalizedEmail);
 
+
+        if (user.LockedUntil.HasValue && user.LockedUntil > DateTimeOffset.UtcNow)
+        {
+            throw new ForbiddenAccessException("Account is temporarily locked. Please try again later.");
+        }
+
         bool passwordValid = _passwordHasher.VerifyPassword(request.Password, user.PasswordHash);
 
-        if(!passwordValid) throw new ForbiddenAccessException("Invalid email or password.");
+        if (!passwordValid)
+        {
+            user.FailedLoginAttempts += 1;
+            if (user.FailedLoginAttempts >= MaxFailedLoginAttempts)
+            {
+                user.LockedUntil = DateTimeOffset.UtcNow.Add(LockoutDuration);
+                user.FailedLoginAttempts = 0;
+            }
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            throw new ForbiddenAccessException("Invalid email or password.");
+        }
 
-        RefreshToken refreshToken = CreateRefreshToken(user.Id, deviceInfo);
+        user.FailedLoginAttempts = 0;
+        user.LockedUntil = null;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+
+        RefreshToken refreshToken = CreateRefreshToken(user.Id, deviceInfo, ipAddress);
 
         user.RefreshTokens.Add(refreshToken);
 
@@ -84,15 +120,63 @@ public sealed class AuthService : IAuthService
         return CreateAuthResponse(user, refreshToken);
     }
 
-    public Task<AuthResponse> RefreshTokenAsync(RefreshTokenRequest request, string? deviceInfo, CancellationToken cancellationToken = default)
+    public async Task<AuthResponse> RefreshTokenAsync(RefreshTokenRequest request, string? deviceInfo, string? ipAddress, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        RefreshToken existingRefreshToken = await _dbContext.RefreshTokens
+            .Include(refreshToken => refreshToken.User)
+            .FirstOrDefaultAsync(refreshToken => refreshToken.Token == request.RefreshToken, cancellationToken)
+            ?? throw new NotFoundException(nameof(RefreshToken), "refresh token");
+
+        if (!existingRefreshToken.IsActive)
+        {
+            throw new ForbiddenAccessException("Refresh token is expired or revoked.");
+        }
+
+        existingRefreshToken.RevokedAt = DateTimeOffset.UtcNow;
+
+        RefreshToken newRefreshToken = CreateRefreshToken(existingRefreshToken.UserId, deviceInfo, ipAddress);
+        existingRefreshToken.User.RefreshTokens.Add(newRefreshToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return CreateAuthResponse(existingRefreshToken.User, newRefreshToken);
+
     }
 
-    public Task RevokeTokenAsync(RevokeTokenRequest request, CancellationToken cancellationToken = default)
+    public async Task RevokeTokenAsync(RevokeTokenRequest request, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        RefreshToken refreshToken = await _dbContext.RefreshTokens
+            .FirstOrDefaultAsync(refreshToken => refreshToken.Token == request.RefreshToken, cancellationToken)
+            ?? throw new NotFoundException(nameof(RefreshToken), "refresh token");
+
+        if (refreshToken.IsRevoked) return;
+
+        refreshToken.RevokedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
+
+
+    public async Task RevokeAllTokensAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+
+        List<RefreshToken> activeTokens = await _dbContext.RefreshTokens
+            .Where(
+                refreshToken => refreshToken.UserId == userId &&
+                refreshToken.RevokedAt == null &&
+                refreshToken.ExpiresAt > DateTimeOffset.UtcNow
+            ).ToListAsync(cancellationToken);
+
+        if (activeTokens.Count == 0) return;
+
+        DateTimeOffset revokedAt = DateTimeOffset.UtcNow;
+
+        foreach (RefreshToken token in activeTokens)
+        {
+            token.RevokedAt = revokedAt;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
 
     public async Task<UserDto> GetCurrentUserAsync(Guid userId, CancellationToken cancellationToken = default)
     {
@@ -116,7 +200,7 @@ public sealed class AuthService : IAuthService
             ToUserDto(user));
     }
 
-    private RefreshToken CreateRefreshToken(Guid userId, string? deviceInfo)
+    private RefreshToken CreateRefreshToken(Guid userId, string? deviceInfo, string? ipAddress)
     {
         return new RefreshToken
         {
@@ -125,7 +209,8 @@ public sealed class AuthService : IAuthService
             Token = GenerateRefreshToken(),
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(_jwtOptions.RefreshTokenExpirationDays),
             CreatedAt = DateTimeOffset.UtcNow,
-            DeviceInfo = deviceInfo
+            DeviceInfo = deviceInfo,
+            IpAddress = ipAddress
         };
     }
 

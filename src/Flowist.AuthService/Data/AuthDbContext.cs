@@ -1,5 +1,6 @@
 using Flowist.AuthService.Entities;
 using Flowist.Shared.Constants;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowist.AuthService.Data;
@@ -50,6 +51,11 @@ public sealed class AuthDbContext : DbContext
                 .IsRequired();
 
             entity.Property(user => user.UpdatedAt);
+            
+            entity.Property(user => user.FailedLoginAttempts)
+                .IsRequired();
+
+            entity.Property(user => user.LockedUntil);
         });
     }
 
@@ -64,7 +70,8 @@ public sealed class AuthDbContext : DbContext
             entity.Property(refreshToken => refreshToken.Token)
                 .IsRequired()
                 .HasMaxLength(500);
-
+            entity.Property(refreshToken => refreshToken.IpAddress)
+                .HasMaxLength(100);
             entity.HasIndex(refreshToken => refreshToken.Token)
                 .IsUnique();
 

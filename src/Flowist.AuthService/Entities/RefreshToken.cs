@@ -15,7 +15,7 @@ public sealed class RefreshToken
     public DateTimeOffset? RevokedAt { get; set; }
 
     public string? DeviceInfo { get; set; }
-
+    public string? IpAddress { get; set; }
     public User User { get; set; } = null!;
 
     public bool IsExpired => DateTimeOffset.UtcNow >= ExpiresAt;

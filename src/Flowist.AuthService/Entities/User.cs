@@ -13,6 +13,9 @@ public sealed class User
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? UpdatedAt { get; set; }
+    public int FailedLoginAttempts { get; set; }
+
+    public DateTimeOffset? LockedUntil { get; set; }
 
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
 }
