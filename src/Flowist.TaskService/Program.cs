@@ -53,6 +53,9 @@ builder.Services
 builder.Services.AddAuthorization();
 
 builder.Services.AddScoped<IWorkspaceService, WorkspaceService>();
+builder.Services.AddScoped<IProjectService,ProjectService>();
+builder.Services.AddScoped<ITaskItemService,TaskItemService>();
+
 builder.Services.AddDbContext<TaskServiceDbContext>(options =>
 {
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));

@@ -3,6 +3,7 @@ using System;
 using Flowist.TaskService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Flowist.TaskService.Data.Migrations
 {
     [DbContext(typeof(TaskServiceDbContext))]
-    partial class TaskServiceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260617100010_AddTaskItems")]
+    partial class AddTaskItems
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

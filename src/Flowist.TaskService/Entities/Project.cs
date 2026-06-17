@@ -1,6 +1,6 @@
 namespace Flowist.TaskService.Entities;
 
-public sealed class Workspace
+public sealed class Project
 {
     public Guid Id { get; set; }
 
@@ -8,12 +8,15 @@ public sealed class Workspace
 
     public string? Description { get; set; }
 
-    public Guid OwnerId { get; set; }
+    public Guid WorkspaceId { get; set; }
+
+    public Guid CreatedBy { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? UpdatedAt { get; set; }
 
-    public ICollection<WorkspaceMember> Members { get; set; } = [];
-    public ICollection<Project> Projects { get; set; } = [];
+    public Workspace Workspace { get; set; } = null!;
+    public ICollection<TaskItem> Tasks { get; set; } = [];
+
 }

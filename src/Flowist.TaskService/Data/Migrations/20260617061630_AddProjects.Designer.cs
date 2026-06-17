@@ -3,6 +3,7 @@ using System;
 using Flowist.TaskService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Flowist.TaskService.Data.Migrations
 {
     [DbContext(typeof(TaskServiceDbContext))]
-    partial class TaskServiceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260617061630_AddProjects")]
+    partial class AddProjects
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -57,64 +60,6 @@ namespace Flowist.TaskService.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Projects", (string)null);
-                });
-
-            modelBuilder.Entity("Flowist.TaskService.Entities.TaskItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("AssigneeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<DateTimeOffset?>("DueDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Priority")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AssigneeId");
-
-                    b.HasIndex("Priority");
-
-                    b.HasIndex("ProjectId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("ProjectId", "Status");
-
-                    b.ToTable("Tasks", (string)null);
                 });
 
             modelBuilder.Entity("Flowist.TaskService.Entities.Workspace", b =>
@@ -191,17 +136,6 @@ namespace Flowist.TaskService.Data.Migrations
                     b.Navigation("Workspace");
                 });
 
-            modelBuilder.Entity("Flowist.TaskService.Entities.TaskItem", b =>
-                {
-                    b.HasOne("Flowist.TaskService.Entities.Project", "Project")
-                        .WithMany("Tasks")
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Project");
-                });
-
             modelBuilder.Entity("Flowist.TaskService.Entities.WorkspaceMember", b =>
                 {
                     b.HasOne("Flowist.TaskService.Entities.Workspace", "Workspace")
@@ -211,11 +145,6 @@ namespace Flowist.TaskService.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Workspace");
-                });
-
-            modelBuilder.Entity("Flowist.TaskService.Entities.Project", b =>
-                {
-                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("Flowist.TaskService.Entities.Workspace", b =>
