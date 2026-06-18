@@ -5,6 +5,8 @@ using Flowist.TaskService.Data;
 using Flowist.TaskService.DTOs;
 using Flowist.TaskService.Entities;
 
+using MassTransit;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowist.TaskService.Services;
@@ -12,10 +14,16 @@ namespace Flowist.TaskService.Services;
 public sealed class ProjectService : IProjectService
 {
     private readonly TaskServiceDbContext _dbContext;
-
-    public ProjectService(TaskServiceDbContext dbContext)
+    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly ILogger<ProjectService> _logger;
+    public ProjectService(
+    TaskServiceDbContext dbContext,
+    IPublishEndpoint publishEndpoint,
+    ILogger<ProjectService> logger)
     {
         _dbContext = dbContext;
+        _publishEndpoint = publishEndpoint;
+        _logger = logger;
     }
 
 
@@ -158,6 +166,20 @@ public sealed class ProjectService : IProjectService
             project.CreatedAt);
     }
 
+
+    private async Task PublishEventAsync<TEvent>(TEvent integrationEvent, CancellationToken cancellationToken)
+        where TEvent : class
+    {
+        try
+        {
+            await _publishEndpoint.Publish(integrationEvent, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to publish integration event {EventType}.", typeof(TEvent).Name);
+            throw;
+        }
+    }
 }
 
 

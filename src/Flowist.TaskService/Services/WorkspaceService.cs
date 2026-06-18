@@ -1,9 +1,12 @@
 using Flowist.Shared.DTOs;
 using Flowist.Shared.Enums;
+using Flowist.Shared.Events;
 using Flowist.Shared.Exceptions;
 using Flowist.TaskService.Data;
 using Flowist.TaskService.DTOs;
 using Flowist.TaskService.Entities;
+
+using MassTransit;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -12,10 +15,16 @@ namespace Flowist.TaskService.Services;
 public class WorkspaceService : IWorkspaceService
 {
     private readonly TaskServiceDbContext _dbContext;
-
-    public WorkspaceService(TaskServiceDbContext dbContext)
+    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly ILogger<WorkspaceService> _logger;
+    public WorkspaceService(
+    TaskServiceDbContext dbContext,
+    IPublishEndpoint publishEndpoint,
+    ILogger<WorkspaceService> logger)
     {
         _dbContext = dbContext;
+        _publishEndpoint = publishEndpoint;
+        _logger = logger;
     }
 
 
@@ -52,6 +61,18 @@ public class WorkspaceService : IWorkspaceService
         _dbContext.WorkspaceMembers.Add(member);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        MemberAddedEvent memberAddedEvent = new(
+            member.WorkspaceId,
+            member.UserId,
+            member.Role,
+            currentUserId,
+            member.JoinedAt,
+            Guid.NewGuid());
+
+        await PublishEventAsync(memberAddedEvent, cancellationToken);
+
+
         return ToWorkspaceMemberDto(member);
     }
 
@@ -266,4 +287,20 @@ public class WorkspaceService : IWorkspaceService
 
         if (!isMember) throw new ForbiddenAccessException();
     }
+
+
+    private async Task PublishEventAsync<TEvent>(TEvent integrationEvent, CancellationToken cancellationToken)
+        where TEvent : class
+    {
+        try
+        {
+            await _publishEndpoint.Publish(integrationEvent, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to publish integration event {EventType}.", typeof(TEvent).Name);
+            throw;
+        }
+    }
+
 }

@@ -1,10 +1,12 @@
 using Flowist.Shared.DTOs;
 using Flowist.Shared.Enums;
+using Flowist.Shared.Events;
 using Flowist.Shared.Exceptions;
 using Flowist.TaskService.Data;
 using Flowist.TaskService.DTOs;
 using Flowist.TaskService.Entities;
 
+using MassTransit;
 using MassTransit.Contracts.JobService;
 
 using Microsoft.EntityFrameworkCore;
@@ -15,10 +17,17 @@ public sealed class TaskItemService : ITaskItemService
 {
 
     private readonly TaskServiceDbContext _dbContext;
+    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly ILogger<TaskItemService> _logger;
 
-    public TaskItemService(TaskServiceDbContext dbContext)
+    public TaskItemService(
+     TaskServiceDbContext dbContext,
+     IPublishEndpoint publishEndpoint,
+     ILogger<TaskItemService> logger)
     {
-        _dbContext=dbContext;
+        _dbContext = dbContext;
+        _publishEndpoint = publishEndpoint;
+        _logger = logger;
     }
     public async Task<TaskItemDto> CreateAsync(Guid projectId, CreateTaskRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
     {
@@ -49,6 +58,17 @@ public sealed class TaskItemService : ITaskItemService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        TaskCreatedEvent taskCreatedEvent = new(
+            task.Id,
+            task.Title,
+            task.ProjectId,
+            project.WorkspaceId,
+            task.CreatedBy,
+            task.CreatedAt,
+            Guid.NewGuid());
+
+        await PublishEventAsync(taskCreatedEvent, cancellationToken);
+
         return ToTaskItemDto(task);
 
     }
@@ -65,6 +85,19 @@ public sealed class TaskItemService : ITaskItemService
 
         task.AssigneeId = request.AssigneeId;
         task.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        TaskAssignedEvent taskAssignedEvent = new(
+            task.Id,
+            request.AssigneeId,
+            currentUserId,
+            task.Project.WorkspaceId,
+            DateTimeOffset.UtcNow,
+            Guid.NewGuid());
+
+        await PublishEventAsync(taskAssignedEvent, cancellationToken);
+
         return ToTaskItemDto(task);
 
     }
@@ -149,8 +182,8 @@ public sealed class TaskItemService : ITaskItemService
            [WorkspaceRole.Owner, WorkspaceRole.Admin, WorkspaceRole.Member],
            cancellationToken);
 
-        task.Status=request.Status;
-        task.UpdatedAt=DateTimeOffset.UtcNow;
+        task.Status = request.Status;
+        task.UpdatedAt = DateTimeOffset.UtcNow;
 
         return ToTaskItemDto(task);
     }
@@ -244,4 +277,18 @@ public sealed class TaskItemService : ITaskItemService
         return query;
     }
 
+    private async Task PublishEventAsync<TEvent>(TEvent integrationEvent, CancellationToken cancellationToken) where TEvent : class
+    {
+        try
+        {
+            await _publishEndpoint.Publish(integrationEvent, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish integration event {EventType}.", typeof(TEvent).Name);
+            throw;
+        }
+
+
+    }
 }
