@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowist.AuthService", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowist.TaskService", "src\Flowist.TaskService\Flowist.TaskService.csproj", "{59405F25-7B8B-4E3F-B9D9-6D15F54DE879}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowist.NotificationService", "src\Flowist.NotificationService\Flowist.NotificationService.csproj", "{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -59,6 +61,18 @@ Global
 		{59405F25-7B8B-4E3F-B9D9-6D15F54DE879}.Release|x64.Build.0 = Release|Any CPU
 		{59405F25-7B8B-4E3F-B9D9-6D15F54DE879}.Release|x86.ActiveCfg = Release|Any CPU
 		{59405F25-7B8B-4E3F-B9D9-6D15F54DE879}.Release|x86.Build.0 = Release|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Debug|x64.Build.0 = Debug|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Debug|x86.Build.0 = Debug|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Release|x64.ActiveCfg = Release|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Release|x64.Build.0 = Release|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Release|x86.ActiveCfg = Release|Any CPU
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -67,5 +81,6 @@ Global
 		{8DB30017-B244-49C1-8F95-579632280F17} = {4F52FD11-658E-A102-6CD3-7D7C16FFA15B}
 		{E70C1562-32E7-4EFD-AB8C-E32E6196DFDC} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{59405F25-7B8B-4E3F-B9D9-6D15F54DE879} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A578BAB2-B440-4A5D-9A68-2DCD14E2AE3D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
