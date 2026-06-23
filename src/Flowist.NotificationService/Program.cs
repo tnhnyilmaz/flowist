@@ -3,6 +3,7 @@ using System.Text;
 
 using Flowist.NotificationService.Consumers;
 using Flowist.NotificationService.Data;
+using Flowist.NotificationService.Hubs;
 using Flowist.NotificationService.Options;
 using Flowist.NotificationService.Services;
 using Flowist.Shared.Extensions;
@@ -24,7 +25,7 @@ builder.Services.AddFluentValidationAutoValidation(options =>
 {
     options.DisableDataAnnotationsValidation = true;
 });
-
+builder.Services.AddSignalR();
 builder.Services.AddFluentValidationClientsideAdapters();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddOpenApi();
@@ -85,11 +86,30 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                string? accessToken = context.Request.Query["access_token"];
+
+                PathString path = context.HttpContext.Request.Path;
+
+                if (!string.IsNullOrWhiteSpace(accessToken) &&
+                    path.StartsWithSegments("/hubs/notification"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IProcessedEventService, ProcessedEventService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddSingleton<IUserConnectionManager, InMemoryUserConnectionManager>();
+builder.Services.AddScoped<INotificationRealtimeService, NotificationRealtimeService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultCorsPolicy", policy =>
@@ -191,5 +211,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notification");
 
 app.Run();

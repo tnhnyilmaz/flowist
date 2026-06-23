@@ -11,9 +11,11 @@ namespace Flowist.NotificationService.Services;
 public class NotificationService : INotificationService
 {
     private readonly NotificationDbContext _dbContext;
-    public NotificationService(NotificationDbContext dbContext)
+    private readonly INotificationRealtimeService _realtimeService;
+    public NotificationService(NotificationDbContext dbContext, INotificationRealtimeService notificationRealtimeService)
     {
         _dbContext = dbContext;
+        _realtimeService = notificationRealtimeService;
     }
     public async Task DeleteAsync(Guid notificationId, Guid userId, CancellationToken cancellationToken = default)
     {
@@ -22,6 +24,7 @@ public class NotificationService : INotificationService
         _dbContext.Notifications.Remove(notification);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await SendUnreadCountAsync(userId, cancellationToken);
     }
 
     public async Task<PagedResult<NotificationDto>> GetNotificationsAsync(Guid userId, NotificationQueryRequest request, CancellationToken cancellationToken = default)
@@ -63,6 +66,7 @@ public class NotificationService : INotificationService
              .SetProperty(notification => notification.IsRead, true)
              .SetProperty(notification => notification.ReadAt, DateTimeOffset.UtcNow),
              cancellationToken);
+        await SendUnreadCountAsync(userId, cancellationToken);
     }
 
 
@@ -78,6 +82,17 @@ public class NotificationService : INotificationService
         notification.ReadAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await SendUnreadCountAsync(userId, cancellationToken);
+    }
+
+    private async Task SendUnreadCountAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        int unreadCount = await GetUnreadCountAsync(userId, cancellationToken);
+
+        await _realtimeService.SendUnreadCountAsync(
+            userId,
+            unreadCount,
+            cancellationToken);
     }
     private async Task<Notification> GetUserNotificationAsync(Guid notificationId, Guid userId, CancellationToken cancellationToken)
     {

@@ -1,10 +1,13 @@
 using Flowist.NotificationService.Data;
 using Flowist.NotificationService.Entities;
 using Flowist.NotificationService.Services;
+using Flowist.Shared.DTOs;
 using Flowist.Shared.Enums;
 using Flowist.Shared.Events;
 
 using MassTransit;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace Flowist.NotificationService.Consumers;
 
@@ -13,15 +16,18 @@ public sealed class TaskAssignedEventConsumer : IConsumer<TaskAssignedEvent>
     private readonly NotificationDbContext _dbContext;
     private readonly ILogger<TaskAssignedEventConsumer> _logger;
     private readonly IProcessedEventService _processedEventService;
+    private readonly INotificationRealtimeService _realtimeService;
 
     public TaskAssignedEventConsumer(
-        NotificationDbContext dbContext,
-        ILogger<TaskAssignedEventConsumer> logger,
-        IProcessedEventService processedEventService)
+      NotificationDbContext dbContext,
+      ILogger<TaskAssignedEventConsumer> logger,
+      IProcessedEventService processedEventService,
+      INotificationRealtimeService realtimeService)
     {
         _dbContext = dbContext;
         _logger = logger;
         _processedEventService = processedEventService;
+        _realtimeService = realtimeService;
     }
     public async Task Consume(ConsumeContext<TaskAssignedEvent> context)
     {
@@ -53,6 +59,24 @@ public sealed class TaskAssignedEventConsumer : IConsumer<TaskAssignedEvent>
             _dbContext.Notifications.Add(notification);
             _processedEventService.MarkAsProcessed(message.EventId, nameof(TaskAssignedEvent));
             await _dbContext.SaveChangesAsync(context.CancellationToken);
+
+            NotificationDto notificationDto = new(
+                notification.Id,
+                notification.UserId,
+                notification.Type,
+                notification.Message,
+                notification.IsRead,
+                notification.CreatedAt);
+
+            await _realtimeService.SendNotificationAsync(notificationDto, context.CancellationToken);
+
+            int unreadCount = await _dbContext.Notifications
+                .CountAsync(existingNotifications =>
+                existingNotifications.UserId == notification.UserId &&
+                !existingNotifications.IsRead,
+                context.CancellationToken);
+
+            await _realtimeService.SendUnreadCountAsync(notification.UserId, unreadCount, context.CancellationToken);
 
             _logger.LogInformation(
                 "Created notification {NotificationId} for assigned task {TaskId}.",
