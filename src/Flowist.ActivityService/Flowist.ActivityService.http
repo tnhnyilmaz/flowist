@@ -1,0 +1,6 @@
+@Flowist.ActivityService_HostAddress = http://localhost:5038
+
+GET {{Flowist.ActivityService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
