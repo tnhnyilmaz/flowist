@@ -1,4 +1,5 @@
 using Flowist.Shared.Enums;
+
 using Microsoft.AspNetCore.Authorization;
 
 namespace Flowist.TaskService.Authorization;

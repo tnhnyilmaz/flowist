@@ -1,0 +1,207 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  CONFIGURATION: Release
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Flowist.sln
+
+      - name: Build
+        run: dotnet build Flowist.sln --configuration ${{ env.CONFIGURATION }} --no-restore
+
+  lint:
+    name: Lint / Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Flowist.sln
+
+      - name: Verify formatting
+        run: dotnet format Flowist.sln --verify-no-changes --verbosity diagnostic
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs:
+      - build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: auth-unit
+            project: tests/Flowist.AuthService.Tests/Flowist.AuthService.Tests.csproj
+          - name: task-unit
+            project: tests/Flowist.TaskService.Tests/Flowist.TaskService.Tests.csproj
+          - name: notification-unit
+            project: tests/Flowist.NotificationService.Tests/Flowist.NotificationService.Tests.csproj
+          - name: activity-unit
+            project: tests/Flowist.ActivityService.Tests/Flowist.ActivityService.Tests.csproj
+          - name: contract
+            project: tests/Flowist.ContractTests/Flowist.ContractTests.csproj
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Flowist.sln
+
+      - name: Test ${{ matrix.project }}
+        run: >-
+          dotnet test ${{ matrix.project }}
+          --configuration ${{ env.CONFIGURATION }}
+          --no-restore
+          --logger trx
+          --results-directory TestResults/unit
+          --collect:"XPlat Code Coverage"
+
+      - name: Upload unit test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results-${{ matrix.name }}
+          path: TestResults/unit
+          if-no-files-found: ignore
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs:
+      - build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: auth-integration
+            project: tests/Flowist.AuthService.IntegrationTests/Flowist.AuthService.IntegrationTests.csproj
+          - name: task-integration
+            project: tests/Flowist.TaskService.IntegrationTests/Flowist.TaskService.IntegrationTests.csproj
+          - name: notification-integration
+            project: tests/Flowist.NotificationService.IntegrationTests/Flowist.NotificationService.IntegrationTests.csproj
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Verify Docker daemon
+        run: docker version
+
+      - name: Restore
+        run: dotnet restore Flowist.sln
+
+      - name: Test ${{ matrix.project }}
+        run: >-
+          dotnet test ${{ matrix.project }}
+          --configuration ${{ env.CONFIGURATION }}
+          --no-restore
+          --logger trx
+          --results-directory TestResults/integration
+          --collect:"XPlat Code Coverage"
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results-${{ matrix.name }}
+          path: TestResults/integration
+          if-no-files-found: ignore
+
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs:
+      - unit-tests
+      - integration-tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download test result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: TestResults
+          pattern: '*test-results-*'
+          merge-multiple: true
+
+      - name: Install ReportGenerator
+        run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: >-
+          reportgenerator
+          -reports:"TestResults/**/coverage.cobertura.xml"
+          -targetdir:"CoverageReport"
+          -reporttypes:"HtmlInline_AzurePipelines;Cobertura;MarkdownSummaryGithub"
+
+      - name: Write coverage summary
+        run: cat CoverageReport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: CoverageReport

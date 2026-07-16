@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flowist-activityservice
+  labels:
+    app.kubernetes.io/name: flowist-activityservice
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flowist-activityservice
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: flowist-activityservice
+        app.kubernetes.io/component: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: activityservice
+          image: ghcr.io/birkil/flowist/flowist-activityservice:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: flowist-common-config
+          env:
+            - name: ConnectionStrings__DefaultConnection
+              value: Host=flowist-postgres;Port=5432;Database=flowist_activity;Username=postgres;Password=$(POSTGRES_PASSWORD)
+            - name: ConnectionStrings__Redis
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: REDIS_CONNECTION
+            - name: RabbitMq__Host
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: RABBITMQ_HOST
+            - name: RabbitMq__Port
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: RABBITMQ_PORT
+            - name: RabbitMq__Username
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: RABBITMQ_USERNAME
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: flowist-app-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: Jwt__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: JWT_ISSUER
+            - name: Jwt__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: JWT_AUDIENCE
+            - name: Jwt__SecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: flowist-app-secrets
+                  key: JWT_SECRET_KEY
+            - name: Serilog__Properties__Application
+              value: Flowist.ActivityService
+            - name: Serilog__WriteTo__0__Args__nodeUris
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: ELASTICSEARCH_URL
+            - name: Serilog__WriteTo__2__Args__serverUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: SEQ_URL
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: flowist-app-secrets
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flowist-activityservice
+  labels:
+    app.kubernetes.io/name: flowist-activityservice
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: flowist-activityservice
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flowist-activityservice
+  labels:
+    app.kubernetes.io/name: flowist-activityservice
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flowist-activityservice
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

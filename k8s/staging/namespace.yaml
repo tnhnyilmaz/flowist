@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flowist-staging
+  labels:
+    app.kubernetes.io/name: flowist
+    app.kubernetes.io/environment: staging

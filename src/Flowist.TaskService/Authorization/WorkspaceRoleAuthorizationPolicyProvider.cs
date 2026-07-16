@@ -20,18 +20,18 @@ public sealed class WorkspaceRoleAuthorizationPolicyProvider : DefaultAuthorizat
         }
 
 
-        string rolesPart= policyName[RequireWorkspaceRoleAttribute.PolicyPrefix.Length..];
+        string rolesPart = policyName[RequireWorkspaceRoleAttribute.PolicyPrefix.Length..];
 
-        WorkspaceRole[] roles=rolesPart
-            .Split(',',StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(role=>Enum.Parse<WorkspaceRole>(role,ignoreCase:true ))
+        WorkspaceRole[] roles = rolesPart
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(role => Enum.Parse<WorkspaceRole>(role, ignoreCase: true))
             .ToArray();
 
-        AuthorizationPolicy policy=new AuthorizationPolicyBuilder()
+        AuthorizationPolicy policy = new AuthorizationPolicyBuilder()
             .RequireAuthenticatedUser()
             .AddRequirements(new WorkspaceRoleRequirement(roles))
             .Build();
-        
+
         return Task.FromResult<AuthorizationPolicy?>(policy);
     }
 }

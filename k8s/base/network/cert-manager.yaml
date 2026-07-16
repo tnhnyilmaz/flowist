@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: flowist-letsencrypt
+  labels:
+    app.kubernetes.io/name: flowist
+spec:
+  acme:
+    email: admin@flowist.local
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: flowist-letsencrypt-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx

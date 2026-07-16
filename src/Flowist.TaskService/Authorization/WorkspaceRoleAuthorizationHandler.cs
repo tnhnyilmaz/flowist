@@ -69,7 +69,7 @@ public sealed class WorkspaceRoleAuthorizationHandler : AuthorizationHandler<Wor
 
             return project?.WorkspaceId;
         }
-        
+
         if (!TryGetGuidRouteValue(routeValues, "id", out Guid id)) return null;
 
         string path = httpContext.Request.Path.Value ?? string.Empty;

@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - infrastructure/postgres.yaml
+  - infrastructure/rabbitmq.yaml
+  - infrastructure/redis.yaml
+  - infrastructure/seq.yaml
+  - infrastructure/elasticsearch.yaml
+  - apps/configmaps.yaml
+  - apps/secrets.yaml
+  - apps/authservice.yaml
+  - apps/taskservice.yaml
+  - apps/notificationservice.yaml
+  - apps/activityservice.yaml
+  - apps/apigateway.yaml
+  - network/ingress.yaml
+  - network/cert-manager.yaml
+  - network/network-policies.yaml
+  - monitoring/prometheus.yaml
+  - monitoring/grafana.yaml

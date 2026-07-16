@@ -1,10 +1,13 @@
 using System.Security.Cryptography;
-using Flowist.Shared.Events;
+using System.Text;
+
 using Flowist.AuthService.Data;
 using Flowist.AuthService.DTOs;
 using Flowist.AuthService.Entities;
 using Flowist.AuthService.Options;
+using Flowist.Shared.Caching;
 using Flowist.Shared.DTOs;
+using Flowist.Shared.Events;
 using Flowist.Shared.Exceptions;
 
 using MassTransit;
@@ -23,19 +26,25 @@ public sealed class AuthService : IAuthService
     private const int MaxFailedLoginAttempts = 5;
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
     private readonly IPublishEndpoint _publishEndpoint;
+    private readonly IRefreshTokenCacheService _refreshTokenCacheService;
+    private readonly IDistributedLockService _distributedLockService;
 
     public AuthService(
         AuthDbContext dbContext,
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IOptions<JwtOptions> jwtOptions,
-        IPublishEndpoint publishEndpoint)
+        IPublishEndpoint publishEndpoint,
+        IRefreshTokenCacheService refreshTokenCacheService,
+        IDistributedLockService distributedLockService)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _jwtOptions = jwtOptions.Value;
         _publishEndpoint = publishEndpoint;
+        _refreshTokenCacheService = refreshTokenCacheService;
+        _distributedLockService = distributedLockService;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? deviceInfo, string? ipAddress, CancellationToken cancellationToken = default)
@@ -66,6 +75,13 @@ public sealed class AuthService : IAuthService
         _dbContext.Users.Add(user);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _refreshTokenCacheService.CacheAsync(
+            refreshToken.Token,
+            user.Id,
+            refreshToken.ExpiresAt,
+            cancellationToken);
+
 
         UserRegisteredEvent userRegisteredEvent = new(
             user.Id,
@@ -108,20 +124,44 @@ public sealed class AuthService : IAuthService
             throw new ForbiddenAccessException("Invalid email or password.");
         }
 
-        user.FailedLoginAttempts = 0;
-        user.LockedUntil = null;
-        user.UpdatedAt = DateTimeOffset.UtcNow;
+        bool userLockoutStateChanged = user.FailedLoginAttempts != 0 || user.LockedUntil is not null;
+
+        if (userLockoutStateChanged)
+        {
+            user.FailedLoginAttempts = 0;
+            user.LockedUntil = null;
+            user.UpdatedAt = DateTimeOffset.UtcNow;
+        }
 
         RefreshToken refreshToken = CreateRefreshToken(user.Id, deviceInfo, ipAddress);
 
-        user.RefreshTokens.Add(refreshToken);
+        _dbContext.RefreshTokens.Add(refreshToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _refreshTokenCacheService.CacheAsync(
+            refreshToken.Token,
+            user.Id,
+            refreshToken.ExpiresAt,
+            cancellationToken);
         return CreateAuthResponse(user, refreshToken);
     }
 
     public async Task<AuthResponse> RefreshTokenAsync(RefreshTokenRequest request, string? deviceInfo, string? ipAddress, CancellationToken cancellationToken = default)
     {
+        string refreshTokenLockKey = $"lock:auth:refresh-token:{ComputeSha256(request.RefreshToken)}";
+
+        await using IDistributedLock? refreshTokenLock =
+            await _distributedLockService.TryAcquireAsync(
+                refreshTokenLockKey,
+                TimeSpan.FromSeconds(30),
+                cancellationToken);
+
+        if (refreshTokenLock is null)
+        {
+            throw new ConflictException("Refresh token operation is already in progress.");
+        }
+
         RefreshToken existingRefreshToken = await _dbContext.RefreshTokens
             .Include(refreshToken => refreshToken.User)
             .FirstOrDefaultAsync(refreshToken => refreshToken.Token == request.RefreshToken, cancellationToken)
@@ -131,12 +171,22 @@ public sealed class AuthService : IAuthService
         {
             throw new ForbiddenAccessException("Refresh token is expired or revoked.");
         }
-
         existingRefreshToken.RevokedAt = DateTimeOffset.UtcNow;
 
         RefreshToken newRefreshToken = CreateRefreshToken(existingRefreshToken.UserId, deviceInfo, ipAddress);
-        existingRefreshToken.User.RefreshTokens.Add(newRefreshToken);
+        _dbContext.RefreshTokens.Add(newRefreshToken);
+
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _refreshTokenCacheService.RemoveAsync(
+            existingRefreshToken.Token,
+            cancellationToken);
+
+        await _refreshTokenCacheService.CacheAsync(
+            newRefreshToken.Token,
+            existingRefreshToken.UserId,
+            newRefreshToken.ExpiresAt,
+            cancellationToken);
 
         return CreateAuthResponse(existingRefreshToken.User, newRefreshToken);
 
@@ -149,9 +199,12 @@ public sealed class AuthService : IAuthService
             ?? throw new NotFoundException(nameof(RefreshToken), "refresh token");
 
         if (refreshToken.IsRevoked) return;
-
         refreshToken.RevokedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _refreshTokenCacheService.RemoveAsync(
+            refreshToken.Token,
+            cancellationToken);
     }
 
 
@@ -175,6 +228,12 @@ public sealed class AuthService : IAuthService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        foreach (RefreshToken token in activeTokens)
+        {
+            await _refreshTokenCacheService.RemoveAsync(
+                token.Token,
+                cancellationToken);
+        }
     }
 
 
@@ -187,7 +246,12 @@ public sealed class AuthService : IAuthService
 
         return ToUserDto(user);
     }
+    private static string ComputeSha256(string value)
+    {
+        byte[] bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
 
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
     private AuthResponse CreateAuthResponse(User user, RefreshToken refreshToken)
     {
         JwtTokenResult accessToken = _jwtTokenService.GenerateAccessToken(user);

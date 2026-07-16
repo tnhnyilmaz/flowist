@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flowist-apigateway
+  labels:
+    app.kubernetes.io/name: flowist-apigateway
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    cert-manager.io/cluster-issuer: flowist-letsencrypt
+spec:
+  tls:
+    - hosts:
+        - api.flowist.local
+      secretName: flowist-apigateway-tls
+  rules:
+    - host: api.flowist.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: flowist-apigateway
+                port:
+                  number: 8080

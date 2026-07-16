@@ -1,5 +1,6 @@
 using Flowist.AuthService.DTOs;
 using Flowist.Shared.Constants;
+
 using FluentValidation;
 
 namespace Flowist.AuthService.Validators;

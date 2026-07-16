@@ -1,4 +1,5 @@
 using Flowist.ActivityService.DTOs;
+
 using FluentValidation;
 
 namespace Flowist.ActivityService.Validators;

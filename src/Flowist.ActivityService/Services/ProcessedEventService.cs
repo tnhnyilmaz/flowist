@@ -1,5 +1,6 @@
 using Flowist.ActivityService.Data;
 using Flowist.ActivityService.Entities;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowist.ActivityService.Services;

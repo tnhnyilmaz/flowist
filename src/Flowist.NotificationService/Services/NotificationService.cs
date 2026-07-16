@@ -1,6 +1,7 @@
 using Flowist.NotificationService.Data;
 using Flowist.NotificationService.DTOs;
 using Flowist.NotificationService.Entities;
+using Flowist.Shared.Caching;
 using Flowist.Shared.DTOs;
 using Flowist.Shared.Exceptions;
 
@@ -10,12 +11,16 @@ namespace Flowist.NotificationService.Services;
 
 public class NotificationService : INotificationService
 {
+    private const string UnreadCountCacheKeyPrefix = "notification:unread-count:";
+    private static readonly TimeSpan UnreadCountCacheExpiration = CacheExpirationDefaults.NotificationUnreadCount;
     private readonly NotificationDbContext _dbContext;
     private readonly INotificationRealtimeService _realtimeService;
-    public NotificationService(NotificationDbContext dbContext, INotificationRealtimeService notificationRealtimeService)
+    private readonly ICacheService _cacheService;
+    public NotificationService(NotificationDbContext dbContext, INotificationRealtimeService notificationRealtimeService, ICacheService cacheService)
     {
         _dbContext = dbContext;
         _realtimeService = notificationRealtimeService;
+        _cacheService = cacheService;
     }
     public async Task DeleteAsync(Guid notificationId, Guid userId, CancellationToken cancellationToken = default)
     {
@@ -54,8 +59,18 @@ public class NotificationService : INotificationService
 
     public async Task<int> GetUnreadCountAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Notifications
-            .CountAsync(notification => notification.UserId == userId && !notification.IsRead, cancellationToken);
+        string cacheKey = GetUnreadCountCacheKey(userId);
+
+        int? cachedUnreadCount = await _cacheService.GetAsync<int?>(
+            cacheKey,
+            cancellationToken);
+
+        if (cachedUnreadCount.HasValue)
+        {
+            return cachedUnreadCount.Value;
+        }
+
+        return await RefreshUnreadCountCacheAsync(userId, cancellationToken);
     }
 
     public async Task MarkAllAsReadAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -87,7 +102,7 @@ public class NotificationService : INotificationService
 
     private async Task SendUnreadCountAsync(Guid userId, CancellationToken cancellationToken)
     {
-        int unreadCount = await GetUnreadCountAsync(userId, cancellationToken);
+        int unreadCount = await RefreshUnreadCountCacheAsync(userId, cancellationToken);
 
         await _realtimeService.SendUnreadCountAsync(
             userId,
@@ -109,5 +124,25 @@ public class NotificationService : INotificationService
             notification.Message,
             notification.IsRead,
             notification.CreatedAt);
+    }
+    private async Task<int> RefreshUnreadCountCacheAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        int unreadCount = await _dbContext.Notifications
+            .CountAsync(
+                notification => notification.UserId == userId && !notification.IsRead,
+                cancellationToken);
+
+        await _cacheService.SetAsync(
+            GetUnreadCountCacheKey(userId),
+            unreadCount,
+            UnreadCountCacheExpiration,
+            cancellationToken);
+
+        return unreadCount;
+    }
+
+    private static string GetUnreadCountCacheKey(Guid userId)
+    {
+        return $"{UnreadCountCacheKeyPrefix}{userId}";
     }
 }

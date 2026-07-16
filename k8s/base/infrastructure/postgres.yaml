@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: flowist-postgres
+  labels:
+    app.kubernetes.io/name: flowist-postgres
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: flowist-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flowist-postgres-init
+  labels:
+    app.kubernetes.io/name: flowist-postgres
+data:
+  init-databases.sql: |
+    CREATE DATABASE flowist_auth;
+    CREATE DATABASE flowist_task;
+    CREATE DATABASE flowist_notification;
+    CREATE DATABASE flowist_activity;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: flowist-postgres
+  labels:
+    app.kubernetes.io/name: flowist-postgres
+    app.kubernetes.io/component: database
+spec:
+  serviceName: flowist-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flowist-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: flowist-postgres
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: flowist-app-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: flowist-postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi

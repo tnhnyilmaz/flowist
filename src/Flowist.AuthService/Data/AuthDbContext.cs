@@ -51,7 +51,7 @@ public sealed class AuthDbContext : DbContext
                 .IsRequired();
 
             entity.Property(user => user.UpdatedAt);
-            
+
             entity.Property(user => user.FailedLoginAttempts)
                 .IsRequired();
 

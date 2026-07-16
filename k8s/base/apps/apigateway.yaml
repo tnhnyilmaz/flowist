@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flowist-apigateway
+  labels:
+    app.kubernetes.io/name: flowist-apigateway
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flowist-apigateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: flowist-apigateway
+        app.kubernetes.io/component: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: apigateway
+          image: ghcr.io/birkil/flowist/flowist-apigateway:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: flowist-common-config
+            - configMapRef:
+                name: flowist-apigateway-config
+          env:
+            - name: Serilog__Properties__Application
+              value: Flowist.ApiGateway
+            - name: Serilog__WriteTo__1__Args__serverUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: SEQ_URL
+            - name: Serilog__WriteTo__2__Args__nodeUris
+              valueFrom:
+                configMapKeyRef:
+                  name: flowist-common-config
+                  key: ELASTICSEARCH_URL
+          readinessProbe:
+            httpGet:
+              path: /api/auth/me
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /swagger/index.html
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flowist-apigateway
+  labels:
+    app.kubernetes.io/name: flowist-apigateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: flowist-apigateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flowist-apigateway
+  labels:
+    app.kubernetes.io/name: flowist-apigateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flowist-apigateway
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

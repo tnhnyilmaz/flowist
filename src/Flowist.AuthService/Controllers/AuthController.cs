@@ -1,7 +1,10 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+
 using Flowist.AuthService.DTOs;
 using Flowist.AuthService.Services;
 using Flowist.Shared.DTOs;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -14,10 +17,12 @@ namespace Flowist.AuthService.Controllers;
 public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly ITokenBlacklistService _tokenBlacklistService;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, ITokenBlacklistService tokenBlacklistService)
     {
         _authService = authService;
+        _tokenBlacklistService = tokenBlacklistService;
     }
 
     /// <summary>
@@ -92,6 +97,7 @@ public sealed class AuthController : ControllerBase
         CancellationToken cancellationToken)
     {
         await _authService.RevokeTokenAsync(request, cancellationToken);
+        await BlacklistCurrentAccessTokenAsync(cancellationToken);
 
         return NoContent();
     }
@@ -113,6 +119,7 @@ public sealed class AuthController : ControllerBase
         }
 
         await _authService.RevokeAllTokensAsync(userId, cancellationToken);
+        await BlacklistCurrentAccessTokenAsync(cancellationToken);
 
         return NoContent();
     }
@@ -146,5 +153,22 @@ public sealed class AuthController : ControllerBase
     private string? GetIpAddress()
     {
         return HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    private async Task BlacklistCurrentAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        string? tokenId = User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+        string? expirationValue = User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+
+        if (string.IsNullOrWhiteSpace(tokenId) ||
+            string.IsNullOrWhiteSpace(expirationValue) ||
+            !long.TryParse(expirationValue, out long expirationUnixSeconds))
+        {
+            return;
+        }
+
+        DateTimeOffset expiresAt = DateTimeOffset.FromUnixTimeSeconds(expirationUnixSeconds);
+
+        await _tokenBlacklistService.BlacklistAsync(tokenId, expiresAt, cancellationToken);
     }
 }

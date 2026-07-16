@@ -14,7 +14,8 @@ public sealed class RegisterRequestValidator : AbstractValidator<RegisterRequest
         RuleFor(request => request.Email)
             .NotEmpty()
             .WithMessage("Email is required.")
-             .WithMessage($"Email must not exceed {ValidationConstants.EmailMaxLength} characters.")
+            .MaximumLength(ValidationConstants.EmailMaxLength)
+            .WithMessage($"Email must not exceed {ValidationConstants.EmailMaxLength} characters.")
             .EmailAddress()
             .WithMessage("Email format is invalid.");
 

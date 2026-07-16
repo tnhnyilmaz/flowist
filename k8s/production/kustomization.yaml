@@ -1,0 +1,51 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: flowist-prod
+
+resources:
+  - namespace.yaml
+  - ../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: flowist
+      app.kubernetes.io/environment: production
+
+images:
+  - name: ghcr.io/birkil/flowist/flowist-authservice
+    newTag: production
+  - name: ghcr.io/birkil/flowist/flowist-taskservice
+    newTag: production
+  - name: ghcr.io/birkil/flowist/flowist-notificationservice
+    newTag: production
+  - name: ghcr.io/birkil/flowist/flowist-activityservice
+    newTag: production
+  - name: ghcr.io/birkil/flowist/flowist-apigateway
+    newTag: production
+
+patches:
+  - target:
+      kind: Ingress
+      name: flowist-apigateway
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: api.flowist.local
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.flowist.local
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component=backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Deployment
+      name: flowist-apigateway
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3

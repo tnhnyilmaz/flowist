@@ -1,0 +1,52 @@
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  seq:
+    ports:
+      - "5341:80"
+
+  elasticsearch:
+    ports:
+      - "9200:9200"
+
+  auth-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5123:8080"
+
+  task-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5147:8080"
+
+  notification-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5233:8080"
+
+  activity-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5038:8080"
+
+  api-gateway:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5177:8080"
+      

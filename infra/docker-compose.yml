@@ -1,0 +1,289 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: flowist-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - flowist-postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+    networks:
+      - flowist-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: flowist-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - flowist-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - flowist-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:8
+    container_name: flowist-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - flowist-redis-data:/data
+    networks:
+      - flowist-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  seq:
+    image: datalust/seq:latest
+    container_name: flowist-seq
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
+    ports:
+      - "5341:80"
+    volumes:
+      - flowist-seq-data:/data
+    networks:
+      - flowist-network
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.14
+    container_name: flowist-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - flowist-elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - flowist-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  auth-service:
+    image: flowist-authservice:dev
+    build:
+      context: ..
+      dockerfile: src/Flowist.AuthService/Dockerfile
+    container_name: flowist-authservice
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS}
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${AUTH_DATABASE};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__Redis: ${REDIS_CONNECTION}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USERNAME}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Jwt__SecretKey: ${JWT_SECRET_KEY}
+      Serilog__Properties__Application: Flowist.AuthService
+      Serilog__Properties__Environment: ${ASPNETCORE_ENVIRONMENT}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      Serilog__WriteTo__2__Args__nodeUris: ${ELASTICSEARCH_URL}
+    ports:
+      - "5123:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - flowist-network
+    restart: unless-stopped
+
+  task-service:
+    image: flowist-taskservice:dev
+    build:
+      context: ..
+      dockerfile: src/Flowist.TaskService/Dockerfile
+    container_name: flowist-taskservice
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS}
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${TASK_DATABASE};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__Redis: ${REDIS_CONNECTION}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USERNAME}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Jwt__SecretKey: ${JWT_SECRET_KEY}
+      Serilog__Properties__Application: Flowist.TaskService
+      Serilog__Properties__Environment: ${ASPNETCORE_ENVIRONMENT}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      Serilog__WriteTo__2__Args__nodeUris: ${ELASTICSEARCH_URL}
+    ports:
+      - "5147:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - flowist-network
+    restart: unless-stopped
+
+  notification-service:
+    image: flowist-notificationservice:dev
+    build:
+      context: ..
+      dockerfile: src/Flowist.NotificationService/Dockerfile
+    container_name: flowist-notificationservice
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS}
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${NOTIFICATION_DATABASE};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__Redis: ${REDIS_CONNECTION}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USERNAME}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Jwt__SecretKey: ${JWT_SECRET_KEY}
+      Serilog__Properties__Application: Flowist.NotificationService
+      Serilog__Properties__Environment: ${ASPNETCORE_ENVIRONMENT}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      Serilog__WriteTo__2__Args__nodeUris: ${ELASTICSEARCH_URL}
+    ports:
+      - "5233:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - flowist-network
+    restart: unless-stopped
+
+  activity-service:
+    image: flowist-activityservice:dev
+    build:
+      context: ..
+      dockerfile: src/Flowist.ActivityService/Dockerfile
+    container_name: flowist-activityservice
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS}
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${ACTIVITY_DATABASE};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__Redis: ${REDIS_CONNECTION}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USERNAME}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Jwt__SecretKey: ${JWT_SECRET_KEY}
+      Serilog__Properties__Application: Flowist.ActivityService
+      Serilog__Properties__Environment: ${ASPNETCORE_ENVIRONMENT}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      Serilog__WriteTo__2__Args__nodeUris: ${ELASTICSEARCH_URL}
+    ports:
+      - "5038:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - flowist-network
+    restart: unless-stopped
+
+  api-gateway:
+    image: flowist-apigateway:dev
+    build:
+      context: ..
+      dockerfile: src/Flowist.ApiGateway/Dockerfile
+    container_name: flowist-apigateway
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS}
+      Serilog__Properties__Application: Flowist.ApiGateway
+      Serilog__Properties__Environment: ${ASPNETCORE_ENVIRONMENT}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      Serilog__WriteTo__2__Args__nodeUris: ${ELASTICSEARCH_URL}
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth-service__Address: http://auth-service:8080/
+      ReverseProxy__Clusters__task-cluster__Destinations__task-service__Address: http://task-service:8080/
+      ReverseProxy__Clusters__notification-cluster__Destinations__notification-service__Address: http://notification-service:8080/
+      ReverseProxy__Clusters__activity-cluster__Destinations__activity-service__Address: http://activity-service:8080/
+    ports:
+      - "5177:8080"
+    depends_on:
+      auth-service:
+        condition: service_started
+      task-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      activity-service:
+        condition: service_started
+      seq:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - flowist-network
+    restart: unless-stopped
+
+volumes:
+  flowist-postgres-data:
+  flowist-rabbitmq-data:
+  flowist-redis-data:
+  flowist-seq-data:
+  flowist-elasticsearch-data:
+
+networks:
+  flowist-network:
+    driver: bridge

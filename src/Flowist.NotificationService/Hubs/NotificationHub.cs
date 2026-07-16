@@ -28,7 +28,7 @@ public sealed class NotificationHub : Hub
             return;
         }
 
-        _userConnectionManager.AddConnection(userId, Context.ConnectionId);
+        await _userConnectionManager.AddConnectionAsync(userId, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, GetUserGroupName(userId));
 
         _logger.LogInformation(
@@ -44,7 +44,7 @@ public sealed class NotificationHub : Hub
     {
         if (TryGetCurrentUserId(out Guid userId))
         {
-            _userConnectionManager.RemoveConnection(userId, Context.ConnectionId);
+            await _userConnectionManager.RemoveConnectionAsync(userId, Context.ConnectionId);
 
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, GetUserGroupName(userId));
 

@@ -1,4 +1,5 @@
 using Flowist.NotificationService.DTOs;
+
 using FluentValidation;
 
 namespace Flowist.NotificationService.Validators;

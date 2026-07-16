@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flowist-common-config
+  labels:
+    app.kubernetes.io/name: flowist
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_URLS: http://+:8080
+  JWT_ISSUER: Flowist.AuthService
+  JWT_AUDIENCE: Flowist.Client
+  POSTGRES_HOST: flowist-postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: postgres
+  RABBITMQ_HOST: flowist-rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USERNAME: guest
+  REDIS_CONNECTION: flowist-redis:6379
+  SEQ_URL: http://flowist-seq
+  ELASTICSEARCH_URL: http://flowist-elasticsearch:9200
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flowist-database-config
+  labels:
+    app.kubernetes.io/name: flowist
+data:
+  AUTH_DATABASE: flowist_auth
+  TASK_DATABASE: flowist_task
+  NOTIFICATION_DATABASE: flowist_notification
+  ACTIVITY_DATABASE: flowist_activity
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flowist-apigateway-config
+  labels:
+    app.kubernetes.io/name: flowist-apigateway
+data:
+  ReverseProxy__Clusters__auth-cluster__Destinations__auth-service__Address: http://flowist-authservice:8080/
+  ReverseProxy__Clusters__task-cluster__Destinations__task-service__Address: http://flowist-taskservice:8080/
+  ReverseProxy__Clusters__notification-cluster__Destinations__notification-service__Address: http://flowist-notificationservice:8080/
+  ReverseProxy__Clusters__activity-cluster__Destinations__activity-service__Address: http://flowist-activityservice:8080/

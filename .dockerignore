@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+
+# Build outputs
+**/bin/
+**/obj/
+**/TestResults/
+**/publish/
+
+# IDE / editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker / compose local overrides
+docker-compose.override.yml
+**/.dockerignore
+
+# Logs
+*.log
+logs/
+**/logs/
+
+# NuGet local artifacts
+*.nupkg
+*.snupkg
+
+# Environment / secrets
+.env
+.env.*
+*.Development.local.json
+
+# Frontend artifacts if added later
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/.nuxt/

@@ -1,0 +1,193 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: dev
+        options:
+          - dev
+          - staging
+          - production
+      image_tag:
+        description: Image tag to deploy. Defaults to the current commit SHA.
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  docker-build-push:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: authservice
+            dockerfile: src/Flowist.AuthService/Dockerfile
+            image: flowist-authservice
+          - service: taskservice
+            dockerfile: src/Flowist.TaskService/Dockerfile
+            image: flowist-taskservice
+          - service: notificationservice
+            dockerfile: src/Flowist.NotificationService/Dockerfile
+            image: flowist-notificationservice
+          - service: activityservice
+            dockerfile: src/Flowist.ActivityService/Dockerfile
+            image: flowist-activityservice
+          - service: apigateway
+            dockerfile: src/Flowist.ApiGateway/Dockerfile
+            image: flowist-apigateway
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set lowercase image namespace
+        shell: bash
+        run: echo "IMAGE_NAMESPACE=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
+      - name: Resolve image tag
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "image_tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "image_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.image_tag }}
+            type=raw,value=${{ github.event.inputs.environment || 'dev' }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs:
+      - docker-build-push
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    env:
+      TARGET_ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+      IMAGE_TAG: ${{ github.event.inputs.image_tag || github.sha }}
+      KUBERNETES_MANIFEST_PATH: k8s
+      KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Skip deploy when kubeconfig is not configured
+        if: env.KUBE_CONFIG_B64 == ''
+        run: echo "KUBE_CONFIG secret is not configured. Docker images were built and pushed; Kubernetes deploy is skipped."
+
+      - name: Configure kubeconfig
+        if: env.KUBE_CONFIG_B64 != ''
+        shell: bash
+        run: |
+          mkdir -p ~/.kube
+          echo "${KUBE_CONFIG_B64}" | base64 --decode > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Validate Kubernetes manifests exist
+        if: env.KUBE_CONFIG_B64 != ''
+        shell: bash
+        run: |
+          if [ ! -d "${KUBERNETES_MANIFEST_PATH}/${TARGET_ENVIRONMENT}" ]; then
+            echo "Expected ${KUBERNETES_MANIFEST_PATH}/${TARGET_ENVIRONMENT} to exist. Add manifests before enabling deploy."
+            exit 1
+          fi
+
+      - name: Resolve Kubernetes namespace
+        if: env.KUBE_CONFIG_B64 != ''
+        shell: bash
+        run: |
+          case "${TARGET_ENVIRONMENT}" in
+            dev)
+              echo "KUBE_NAMESPACE=flowist-dev" >> "$GITHUB_ENV"
+              ;;
+            staging)
+              echo "KUBE_NAMESPACE=flowist-staging" >> "$GITHUB_ENV"
+              ;;
+            production)
+              echo "KUBE_NAMESPACE=flowist-prod" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Unknown target environment: ${TARGET_ENVIRONMENT}"
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy manifests
+        if: env.KUBE_CONFIG_B64 != ''
+        shell: bash
+        run: kubectl apply -k "${KUBERNETES_MANIFEST_PATH}/${TARGET_ENVIRONMENT}"
+
+      - name: Wait for rollout
+        if: env.KUBE_CONFIG_B64 != ''
+        shell: bash
+        run: |
+          kubectl rollout status deployment/flowist-authservice -n "${KUBE_NAMESPACE}" --timeout=180s
+          kubectl rollout status deployment/flowist-taskservice -n "${KUBE_NAMESPACE}" --timeout=180s
+          kubectl rollout status deployment/flowist-notificationservice -n "${KUBE_NAMESPACE}" --timeout=180s
+          kubectl rollout status deployment/flowist-activityservice -n "${KUBE_NAMESPACE}" --timeout=180s
+          kubectl rollout status deployment/flowist-apigateway -n "${KUBE_NAMESPACE}" --timeout=180s
+
+      - name: Rollback on failed rollout
+        if: failure() && env.KUBE_CONFIG_B64 != ''
+        shell: bash
+        run: |
+          kubectl rollout undo deployment/flowist-authservice -n "${KUBE_NAMESPACE}" || true
+          kubectl rollout undo deployment/flowist-taskservice -n "${KUBE_NAMESPACE}" || true
+          kubectl rollout undo deployment/flowist-notificationservice -n "${KUBE_NAMESPACE}" || true
+          kubectl rollout undo deployment/flowist-activityservice -n "${KUBE_NAMESPACE}" || true
+          kubectl rollout undo deployment/flowist-apigateway -n "${KUBE_NAMESPACE}" || true

@@ -2,9 +2,17 @@ namespace Flowist.NotificationService.Services;
 
 public interface IUserConnectionManager
 {
-    void AddConnection(Guid userId, string connectionId);
+    Task AddConnectionAsync(
+        Guid userId,
+        string connectionId,
+        CancellationToken cancellationToken = default);
 
-    void RemoveConnection(Guid userId, string connectionId);
+    Task RemoveConnectionAsync(
+        Guid userId,
+        string connectionId,
+        CancellationToken cancellationToken = default);
 
-    IReadOnlyCollection<string> GetConnections(Guid userId);
+    Task<IReadOnlyCollection<string>> GetConnectionsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }

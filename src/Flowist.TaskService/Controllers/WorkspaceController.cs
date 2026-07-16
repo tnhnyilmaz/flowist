@@ -14,7 +14,7 @@ namespace Flowist.TaskService.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/[controller]")]
+[Route("api/workspaces")]
 public sealed class WorkspaceController : Controller
 {
     private readonly IWorkspaceService _workspaceService;

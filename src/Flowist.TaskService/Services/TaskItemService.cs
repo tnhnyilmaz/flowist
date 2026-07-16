@@ -185,6 +185,8 @@ public sealed class TaskItemService : ITaskItemService
         task.Status = request.Status;
         task.UpdatedAt = DateTimeOffset.UtcNow;
 
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
         return ToTaskItemDto(task);
     }
 

@@ -27,66 +27,66 @@ public sealed class TaskServiceDbContext : DbContext
         ConfigureTaskItem(modelBuilder);
     }
 
-private static void ConfigureTaskItem(ModelBuilder modelBuilder)
-{
-    modelBuilder.Entity<TaskItem>(entity =>
+    private static void ConfigureTaskItem(ModelBuilder modelBuilder)
     {
-        entity.ToTable("Tasks");
-
-        entity.HasKey(task => task.Id);
-
-        entity.Property(task => task.Title)
-            .IsRequired()
-            .HasMaxLength(ValidationConstants.TaskTitleMaxLength);
-
-        entity.Property(task => task.Description)
-            .HasMaxLength(ValidationConstants.TaskDescriptionMaxLength);
-
-        entity.Property(task => task.Status)
-            .IsRequired()
-            .HasConversion<string>()
-            .HasMaxLength(50);
-
-        entity.Property(task => task.Priority)
-            .IsRequired()
-            .HasConversion<string>()
-            .HasMaxLength(50);
-
-        entity.Property(task => task.AssigneeId);
-
-        entity.Property(task => task.ProjectId)
-            .IsRequired();
-
-        entity.Property(task => task.CreatedBy)
-            .IsRequired();
-
-        entity.Property(task => task.DueDate);
-
-        entity.Property(task => task.CreatedAt)
-            .IsRequired();
-
-        entity.Property(task => task.UpdatedAt);
-
-        entity.HasIndex(task => task.ProjectId);
-
-        entity.HasIndex(task => task.Status);
-
-        entity.HasIndex(task => task.Priority);
-
-        entity.HasIndex(task => task.AssigneeId);
-
-        entity.HasIndex(task => new
+        modelBuilder.Entity<TaskItem>(entity =>
         {
-            task.ProjectId,
-            task.Status
-        });
+            entity.ToTable("Tasks");
 
-        entity.HasOne(task => task.Project)
-            .WithMany(project => project.Tasks)
-            .HasForeignKey(task => task.ProjectId)
-            .OnDelete(DeleteBehavior.Cascade);
-    });
-}
+            entity.HasKey(task => task.Id);
+
+            entity.Property(task => task.Title)
+                .IsRequired()
+                .HasMaxLength(ValidationConstants.TaskTitleMaxLength);
+
+            entity.Property(task => task.Description)
+                .HasMaxLength(ValidationConstants.TaskDescriptionMaxLength);
+
+            entity.Property(task => task.Status)
+                .IsRequired()
+                .HasConversion<string>()
+                .HasMaxLength(50);
+
+            entity.Property(task => task.Priority)
+                .IsRequired()
+                .HasConversion<string>()
+                .HasMaxLength(50);
+
+            entity.Property(task => task.AssigneeId);
+
+            entity.Property(task => task.ProjectId)
+                .IsRequired();
+
+            entity.Property(task => task.CreatedBy)
+                .IsRequired();
+
+            entity.Property(task => task.DueDate);
+
+            entity.Property(task => task.CreatedAt)
+                .IsRequired();
+
+            entity.Property(task => task.UpdatedAt);
+
+            entity.HasIndex(task => task.ProjectId);
+
+            entity.HasIndex(task => task.Status);
+
+            entity.HasIndex(task => task.Priority);
+
+            entity.HasIndex(task => task.AssigneeId);
+
+            entity.HasIndex(task => new
+            {
+                task.ProjectId,
+                task.Status
+            });
+
+            entity.HasOne(task => task.Project)
+                .WithMany(project => project.Tasks)
+                .HasForeignKey(task => task.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
     private static void ConfigureWorkspace(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Workspace>(entity =>
@@ -157,43 +157,43 @@ private static void ConfigureTaskItem(ModelBuilder modelBuilder)
         });
     }
     private static void ConfigureProject(ModelBuilder modelBuilder)
-{
-    modelBuilder.Entity<Project>(entity =>
     {
-        entity.ToTable("Projects");
-
-        entity.HasKey(project => project.Id);
-
-        entity.Property(project => project.Name)
-            .IsRequired()
-            .HasMaxLength(ValidationConstants.ProjectNameMaxLength);
-
-        entity.Property(project => project.Description)
-            .HasMaxLength(ValidationConstants.ProjectDescriptionMaxLength);
-
-        entity.Property(project => project.WorkspaceId)
-            .IsRequired();
-
-        entity.Property(project => project.CreatedBy)
-            .IsRequired();
-
-        entity.Property(project => project.CreatedAt)
-            .IsRequired();
-
-        entity.Property(project => project.UpdatedAt);
-
-        entity.HasIndex(project => project.WorkspaceId);
-
-        entity.HasIndex(project => new
+        modelBuilder.Entity<Project>(entity =>
         {
-            project.WorkspaceId,
-            project.Name
-        }).IsUnique();
+            entity.ToTable("Projects");
 
-        entity.HasOne(project => project.Workspace)
-            .WithMany(workspace => workspace.Projects)
-            .HasForeignKey(project => project.WorkspaceId)
-            .OnDelete(DeleteBehavior.Cascade);
-    });
-}
+            entity.HasKey(project => project.Id);
+
+            entity.Property(project => project.Name)
+                .IsRequired()
+                .HasMaxLength(ValidationConstants.ProjectNameMaxLength);
+
+            entity.Property(project => project.Description)
+                .HasMaxLength(ValidationConstants.ProjectDescriptionMaxLength);
+
+            entity.Property(project => project.WorkspaceId)
+                .IsRequired();
+
+            entity.Property(project => project.CreatedBy)
+                .IsRequired();
+
+            entity.Property(project => project.CreatedAt)
+                .IsRequired();
+
+            entity.Property(project => project.UpdatedAt);
+
+            entity.HasIndex(project => project.WorkspaceId);
+
+            entity.HasIndex(project => new
+            {
+                project.WorkspaceId,
+                project.Name
+            }).IsUnique();
+
+            entity.HasOne(project => project.Workspace)
+                .WithMany(workspace => workspace.Projects)
+                .HasForeignKey(project => project.WorkspaceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
 }

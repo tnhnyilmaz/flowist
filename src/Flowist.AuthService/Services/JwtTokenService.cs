@@ -1,12 +1,12 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+
 using Flowist.AuthService.Entities;
 using Flowist.AuthService.Options;
 
-using System.Security.Claims;
-
 using Microsoft.Extensions.Options;
-using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
 
 namespace Flowist.AuthService.Services;
 
@@ -30,7 +30,7 @@ public sealed class JwtTokenService : IJwtTokenService
             new(Flowist.Shared.Constants.ClaimTypes.Email, user.Email),
             new(Flowist.Shared.Constants.ClaimTypes.FullName, user.FullName),
             new(JwtRegisteredClaimNames.Email, user.Email),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
          ];
 
         SymmetricSecurityKey securityKey = new(Encoding.UTF8.GetBytes(_jwtOptions.SecretKey));
@@ -46,7 +46,7 @@ public sealed class JwtTokenService : IJwtTokenService
 
         string accessToken = new JwtSecurityTokenHandler().WriteToken(token);
 
-        return new JwtTokenResult(accessToken,expiresAt);
+        return new JwtTokenResult(accessToken, expiresAt);
 
     }
 
@@ -55,5 +55,3 @@ public sealed class JwtTokenService : IJwtTokenService
         throw new NotImplementedException();
     }
 }
-
-

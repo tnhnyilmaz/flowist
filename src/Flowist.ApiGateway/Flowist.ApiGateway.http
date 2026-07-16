@@ -1,0 +1,6 @@
+@Flowist.ApiGateway_HostAddress = http://localhost:5177
+
+GET {{Flowist.ApiGateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

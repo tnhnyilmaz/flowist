@@ -122,6 +122,9 @@ public class WorkspaceService : IWorkspaceService
         Workspace workspace = await _dbContext.Workspaces
             .FirstOrDefaultAsync(workspace => workspace.Id == workspaceId, cancellationToken)
             ?? throw new NotFoundException(nameof(Workspace), workspaceId);
+
+        _dbContext.Workspaces.Remove(workspace);
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<WorkspaceDto> GetByIdAsync(Guid workspaceId, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -206,7 +209,9 @@ public class WorkspaceService : IWorkspaceService
         workspace.Description = request.Description;
         workspace.UpdatedAt = DateTimeOffset.UtcNow;
 
-        return (ToWorkspaceDto(workspace));
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToWorkspaceDto(workspace);
     }
 
     private async Task EnsureOwnerAsync(Guid workspaceId, Guid currentUserId, CancellationToken cancellationToken)
